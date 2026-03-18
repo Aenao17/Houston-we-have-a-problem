@@ -13,13 +13,15 @@ It uses a Spring Boot backend for all calculations and an Ionic React frontend f
 
 ## ▶️ How to Run
 
-Backend (Spring Boot)
+1. Clone this repository
+
+2. Backend (Spring Boot)
 ```Bash
 cd backend
 ./mvnw spring-boot:run 
 ```
 
-Frontend (Ionic React)
+3. Frontend (Ionic React)
 ```Bash
 cd frontend
 npm install
