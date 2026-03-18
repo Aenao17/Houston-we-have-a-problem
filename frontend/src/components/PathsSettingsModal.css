@@ -1,0 +1,140 @@
+.paths-modal {
+    --width: min(92%, 720px);
+    --height: 80vh;
+    --max-height: 80vh;
+    --border-radius: 26px;
+    --box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.paths-modal::part(content) {
+    background: transparent;
+    border-radius: 26px;
+    overflow: hidden;
+    border: 1px solid rgba(120, 180, 255, 0.16);
+    backdrop-filter: blur(18px);
+    height: 100%;
+}
+
+.paths-modal-header,
+.paths-modal-toolbar {
+    --background: rgba(7, 12, 24, 0.88);
+    --border-width: 0;
+}
+
+.paths-modal-title {
+    color: #eef6ff;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+}
+
+.modal-close-btn {
+    --color: #9fd4ff;
+}
+
+.modal-close-btn ion-icon {
+    font-size: 1.4rem;
+}
+
+.paths-modal-content {
+    --background: radial-gradient(circle at top, #111a33 0%, #070b16 50%, #04070d 100%);
+    position: relative;
+    color: #f5f9ff;
+    height: 100%;
+}
+
+.paths-modal-bg {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+            radial-gradient(2px 2px at 30px 40px, rgba(255, 255, 255, 0.75), transparent),
+            radial-gradient(1.5px 1.5px at 150px 100px, rgba(173, 216, 255, 0.7), transparent),
+            radial-gradient(2px 2px at 280px 60px, rgba(255, 255, 255, 0.8), transparent),
+            radial-gradient(1.5px 1.5px at 420px 160px, rgba(255, 255, 255, 0.6), transparent),
+            radial-gradient(2px 2px at 560px 90px, rgba(173, 216, 255, 0.8), transparent);
+    opacity: 0.35;
+}
+
+.paths-modal-wrapper {
+    position: relative;
+    z-index: 1;
+    padding: 8px 4px 18px;
+}
+
+.paths-modal-badge {
+    display: inline-block;
+    padding: 8px 14px;
+    margin-bottom: 16px;
+    border-radius: 999px;
+    background: rgba(90, 160, 255, 0.12);
+    border: 1px solid rgba(140, 190, 255, 0.24);
+    color: #9fd4ff;
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+}
+
+.paths-modal-heading {
+    margin: 0 0 8px;
+    font-size: 1.9rem;
+    font-weight: 800;
+    color: #ffffff;
+}
+
+.paths-modal-subtext {
+    margin: 0 0 24px;
+    color: #b9c8e8;
+    line-height: 1.6;
+}
+
+.space-input-item {
+    --background: rgba(255, 255, 255, 0.04);
+    --border-color: rgba(155, 205, 255, 0.1);
+    --highlight-color-focused: #7fc8ff;
+    --color: #eef6ff;
+    --border-radius: 16px;
+    margin-bottom: 14px;
+    border: 1px solid rgba(155, 205, 255, 0.1);
+    border-radius: 16px;
+}
+
+.space-input-item ion-label {
+    color: #8dcfff !important;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+.space-input-item ion-input {
+    --color: #f5f9ff;
+    --placeholder-color: #8b9bbb;
+    --padding-top: 12px;
+    --padding-bottom: 12px;
+}
+
+.paths-modal-actions {
+    margin-top: 22px;
+}
+
+.save-paths-button {
+    --background: linear-gradient(90deg, #4cc9f0, #5b8cff, #7b61ff);
+    --background-hover: linear-gradient(90deg, #60d4f5, #6b99ff, #8c72ff);
+    --color: #ffffff;
+    --border-radius: 16px;
+    height: 52px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: none;
+    box-shadow: 0 0 24px rgba(91, 140, 255, 0.35);
+}
+
+@media (max-width: 768px) {
+    .paths-modal {
+        --width: 94%;
+        --height: 85vh;
+        --max-height: 85vh;
+    }
+
+    .paths-modal-heading {
+        font-size: 1.6rem;
+    }
+}

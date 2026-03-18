@@ -1,0 +1,167 @@
+.solar-system-wrapper {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    max-width: 1400px;
+    margin: 10px auto 0;
+    padding: 24px;
+}
+
+.solar-system-title {
+    margin-bottom: 20px;
+    color: #eef6ff;
+    font-size: 1.8rem;
+    font-weight: 800;
+    text-align: center;
+}
+
+.solar-system {
+    position: relative;
+    width: 100%;
+    min-height: 900px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: visible;
+}
+
+.sun {
+    position: absolute;
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #ffd36b 0%, #ff9f1c 70%, #ff7b00 100%);
+    box-shadow: 0 0 40px rgba(255, 174, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    color: #2b1600;
+    z-index: 5;
+    transition: transform 0.4s ease, box-shadow 0.4s ease;
+}
+
+.sun-animated {
+    transform: scale(1.08);
+    box-shadow: 0 0 60px rgba(255, 174, 0, 0.85);
+}
+
+.orbit {
+    position: absolute;
+    border: 1px solid rgba(159, 212, 255, 0.16);
+    border-radius: 50%;
+}
+
+.planet-anchor {
+    position: absolute;
+    inset: 0;
+    will-change: transform;
+}
+
+.planet {
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    box-shadow: 0 0 14px rgba(255, 255, 255, 0.2);
+}
+
+.planet-label {
+    position: absolute;
+    top: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #dfeaff;
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+.rocket-marker {
+    position: absolute;
+    top: -26px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 1rem;
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.7));
+    animation: rocketPulse 1s ease-in-out infinite;
+}
+
+.flying-rocket {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    margin-left: -10px;
+    margin-top: -10px;
+    font-size: 1.2rem;
+    z-index: 20;
+    filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.9));
+    pointer-events: none;
+    will-change: transform;
+}
+
+.planet-legend {
+    margin-top: 28px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+}
+
+.planet-legend-item {
+    display: flex;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(155, 205, 255, 0.1);
+    color: #dce8ff;
+}
+
+.planet-legend-item p {
+    margin: 4px 0 0;
+    color: #b9c8e8;
+    font-size: 0.9rem;
+}
+
+.planet-legend-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    margin-top: 4px;
+    flex-shrink: 0;
+}
+
+@keyframes rocketPulse {
+    0% {
+        transform: translateX(-50%) scale(1);
+    }
+    50% {
+        transform: translateX(-50%) scale(1.12);
+    }
+    100% {
+        transform: translateX(-50%) scale(1);
+    }
+}
+
+@media (max-width: 768px) {
+    .solar-system {
+        min-height: 700px;
+    }
+
+    .solar-system-title {
+        font-size: 1.5rem;
+    }
+}
+
+.flying-rocket {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    margin-left: -10px;
+    margin-top: -10px;
+    font-size: 1.35rem;
+    z-index: 20;
+    filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.95));
+    pointer-events: none;
+    will-change: transform;
+}
