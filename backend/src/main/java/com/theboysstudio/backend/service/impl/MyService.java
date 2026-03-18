@@ -143,65 +143,69 @@ public class MyService implements IService {
         return str.toString();
     }
 
-    private int findOptimalTransferWindow(String start, String end){
-        Planet startPlanet = this.getPlanetByName(start);
-        Planet endPlanet = this.getPlanetByName(end);
+    private int findOptimalTransferWindow(String start, String end) {
+        final Planet startPlanet = this.getPlanetByName(start);
+        final Planet endPlanet = this.getPlanetByName(end);
+        final List<Planet> planets = repository.getAll();
 
-        double minDist=Double.MAX_VALUE;
-        int minI=0;
+        final double AU = 149597870.7;
 
-        List<Planet> planets = repository.getAll();
-        double AU = 149597870.7;
+        double minDist = Double.MAX_VALUE;
+        int minI = 0;
 
-        for(int i=1;i<=3650;i++){
-            int copyi=i;
-            i=i+36500;
+        for (int i = 1; i <= 3650; i++) {
+            final int originalI = i;
+            i = i + 36500;
 
-            double startPos = ((360 / startPlanet.getPeriod().evaluate())*i)%360;
-            double endPos = ((360 / endPlanet.getPeriod().evaluate())*i)%360;
+            final double startPos = ((360 / startPlanet.getPeriod().evaluate()) * i) % 360;
+            final double endPos = ((360 / endPlanet.getPeriod().evaluate()) * i) % 360;
 
-            //convert to radians
-            double startRad = Math.toRadians(startPos);
-            double endRad = Math.toRadians(endPos);
+            // Convert to radians
+            final double startRad = Math.toRadians(startPos);
+            final double endRad = Math.toRadians(endPos);
 
-            //convert to a Cartesian system
-            double startX = startPlanet.getOrbitalRadius().evaluate() * Math.cos(startRad);
-            double startY = startPlanet.getOrbitalRadius().evaluate() * Math.sin(startRad);
+            // Convert to Cartesian coordinates
+            final double startX = startPlanet.getOrbitalRadius().evaluate() * Math.cos(startRad);
+            final double startY = startPlanet.getOrbitalRadius().evaluate() * Math.sin(startRad);
 
-            double endX = endPlanet.getOrbitalRadius().evaluate() * Math.cos(endRad);
-            double endY = endPlanet.getOrbitalRadius().evaluate() * Math.sin(endRad);
+            final double endX = endPlanet.getOrbitalRadius().evaluate() * Math.cos(endRad);
+            final double endY = endPlanet.getOrbitalRadius().evaluate() * Math.sin(endRad);
 
-            //compute the distance between the two planets
-            double distance = Math.sqrt(Math.pow(startX-endX,2)+Math.pow(startY-endY,2))*AU*1000;
+            // Distance between the two planets
+            final double distance =
+                    Math.sqrt(Math.pow(startX - endX, 2) + Math.pow(startY - endY, 2)) * AU * 1000;
 
-            if(distance<minDist){
-                //check if this journey is possible (rocket wont crash into a planet)
-                int cnt=0;
-                for(Planet planet: planets){
-                    if(planet.getName().equals(start) || planet.getName().equals(end))
+            if (distance < minDist) {
+                int clearPathCount = 0;
+
+                for (Planet planet : planets) {
+                    if (planet.getName().equals(start) || planet.getName().equals(end)) {
                         continue;
+                    }
 
-                    double planetPos = ((360 / planet.getPeriod().evaluate())*i)%360;
-                    double planetRad = Math.toRadians(planetPos);
+                    final double planetPos = ((360 / planet.getPeriod().evaluate()) * i) % 360;
+                    final double planetRad = Math.toRadians(planetPos);
 
-                    double planetX = planet.getOrbitalRadius().evaluate()*Math.cos(planetRad);
-                    double planetY = planet.getOrbitalRadius().evaluate()*Math.sin(planetRad);
+                    final double planetX = planet.getOrbitalRadius().evaluate() * Math.cos(planetRad);
+                    final double planetY = planet.getOrbitalRadius().evaluate() * Math.sin(planetRad);
 
-                    //compute d = |(x2-x1)(y1-y0)-(x1-x0)(y2-y1)|/sqrt((x2-x1)^2+(y2-y1)^2)
-                    double d = (Math.abs((endX-startX)*(startY-planetY)-(startX-planetX)*(endY-startY)))/
-                            (Math.sqrt(Math.pow(endX-startX,2)+Math.pow(endY-startY,2)));
-                    d=d*AU*1000;
+                    // d = |(x2-x1)(y1-y0) - (x1-x0)(y2-y1)| / sqrt((x2-x1)^2 + (y2-y1)^2)
+                    double d = Math.abs((endX - startX) * (startY - planetY) - (startX - planetX) * (endY - startY))
+                            / Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+                    d = d * AU * 1000;
 
-                    if(d>planet.getDiameter().evaluate()/2){
-                        cnt++;
+                    if (d > planet.getDiameter().evaluate() / 2) {
+                        clearPathCount++;
                     }
                 }
-                if(cnt==planets.size()-2){
-                    minDist=distance;
-                    minI=i;
+
+                if (clearPathCount == planets.size() - 2) {
+                    minDist = distance;
+                    minI = i;
                 }
             }
-            i=copyi;
+
+            i = originalI;
         }
 
         return minI;
@@ -209,222 +213,244 @@ public class MyService implements IService {
 
     @Override
     public String computeJourneyStage5(String start, String end) {
-        int optimalTime = findOptimalTransferWindow(start,end);
+        final int optimalTime = findOptimalTransferWindow(start, end);
 
-        Planet startPlanet = this.getPlanetByName(start);
-        Planet endPlanet = this.getPlanetByName(end);
+        final Planet startPlanet = this.getPlanetByName(start);
+        final Planet endPlanet = this.getPlanetByName(end);
 
-        //distance between the two planets after optimalTime days
-        double AU = 149597870.7;
-        double startPos = ((360 / startPlanet.getPeriod().evaluate())*optimalTime)%360;
-        double endPos = ((360 / endPlanet.getPeriod().evaluate())*optimalTime)%360;
+        final double AU = 149597870.7;
 
-        //convert to radians
-        double startRad = Math.toRadians(startPos);
-        double endRad = Math.toRadians(endPos);
+        // Distance between the two planets after optimalTime days
+        final double startPos = ((360 / startPlanet.getPeriod().evaluate()) * optimalTime) % 360;
+        final double endPos = ((360 / endPlanet.getPeriod().evaluate()) * optimalTime) % 360;
 
-        //convert to a Cartesian system
-        double startX = startPlanet.getOrbitalRadius().evaluate() * Math.cos(startRad);
-        double startY = startPlanet.getOrbitalRadius().evaluate() * Math.sin(startRad);
+        // Convert to radians
+        final double startRad = Math.toRadians(startPos);
+        final double endRad = Math.toRadians(endPos);
 
-        double endX = endPlanet.getOrbitalRadius().evaluate() * Math.cos(endRad);
-        double endY = endPlanet.getOrbitalRadius().evaluate() * Math.sin(endRad);
+        // Convert to Cartesian coordinates
+        final double startX = startPlanet.getOrbitalRadius().evaluate() * Math.cos(startRad);
+        final double startY = startPlanet.getOrbitalRadius().evaluate() * Math.sin(startRad);
 
-        //compute the distance between the two planets
-        double distance = Math.sqrt(Math.pow(startX-endX,2)+Math.pow(startY-endY,2))*1000*AU;
-        double cruisingSpeed = Math.max(startPlanet.getEscapeV().evaluate(), endPlanet.getEscapeV().evaluate());
+        final double endX = endPlanet.getOrbitalRadius().evaluate() * Math.cos(endRad);
+        final double endY = endPlanet.getOrbitalRadius().evaluate() * Math.sin(endRad);
 
-        //la plecare
-        double timeFromEVtoCV = (cruisingSpeed-startPlanet.getEscapeV().evaluate())/this.rocketAcc.evaluate();
-        double timeToAchieveCV = startPlanet.getTimeToGo().evaluate() + timeFromEVtoCV;
+        // Compute the distance between the two planets
+        final double distance = Math.sqrt(Math.pow(startX - endX, 2) + Math.pow(startY - endY, 2)) * 1000 * AU;
 
-        double distanceFromEVtoCV = (startPlanet.getEscapeV().evaluate()*timeFromEVtoCV + (this.rocketAcc.evaluate()*timeFromEVtoCV*timeFromEVtoCV)/2);
-        double distanceToAchieveCV = startPlanet.getDistanceToGo().evaluate() + distanceFromEVtoCV;
+        final double startEscapeVelocity = startPlanet.getEscapeV().evaluate();
+        final double endEscapeVelocity = endPlanet.getEscapeV().evaluate();
+        final double rocketAcceleration = this.rocketAcc.evaluate();
 
-        //la sosire
-        double timeFromCVtoEV = (cruisingSpeed-endPlanet.getEscapeV().evaluate())/this.rocketAcc.evaluate();
-        double distanceFromCVtoEV = Math.abs(cruisingSpeed*cruisingSpeed-endPlanet.getEscapeV().multiply(endPlanet.getEscapeV()).evaluate())
-                / (2*this.rocketAcc.evaluate());
+        final double cruisingSpeed = Math.max(startEscapeVelocity, endEscapeVelocity);
 
-        double timeToLand = endPlanet.getTimeToGo().evaluate() + timeFromCVtoEV;
-        double distToLand = endPlanet.getDistanceToGo().evaluate() + distanceFromCVtoEV;
+        // Departure phase
+        final double timeFromEVtoCV = (cruisingSpeed - startEscapeVelocity) / rocketAcceleration;
+        final double timeToAchieveCV = startPlanet.getTimeToGo().evaluate() + timeFromEVtoCV;
 
-        //
-        double cruisingDist = distance-startPlanet.getDiameter().evaluate()/2-endPlanet.getDiameter().evaluate()/2-
-                distToLand - distanceToAchieveCV;
-        double cruisingTime = cruisingDist/cruisingSpeed;
+        final double distanceFromEVtoCV =
+                startEscapeVelocity * timeFromEVtoCV
+                        + (rocketAcceleration * timeFromEVtoCV * timeFromEVtoCV) / 2;
+        final double distanceToAchieveCV = startPlanet.getDistanceToGo().evaluate() + distanceFromEVtoCV;
 
-        double totaltime = timeToAchieveCV + cruisingTime + timeToLand;
+        // Arrival phase
+        final double timeFromCVtoEV = (cruisingSpeed - endEscapeVelocity) / rocketAcceleration;
+        final double distanceFromCVtoEV =
+                Math.abs(cruisingSpeed * cruisingSpeed - endPlanet.getEscapeV().multiply(endPlanet.getEscapeV()).evaluate())
+                        / (2 * rocketAcceleration);
 
-        String str="";
+        final double timeToLand = endPlanet.getTimeToGo().evaluate() + timeFromCVtoEV;
+        final double distToLand = endPlanet.getDistanceToGo().evaluate() + distanceFromCVtoEV;
 
-        str+= timeToAchieveCV + "," + distanceToAchieveCV+","+cruisingTime+","+distToLand+","+timeToLand+","+totaltime +","+ (optimalTime-36500);
+        // Cruising phase
+        final double cruisingDist =
+                distance
+                        - startPlanet.getDiameter().evaluate() / 2
+                        - endPlanet.getDiameter().evaluate() / 2
+                        - distToLand
+                        - distanceToAchieveCV;
 
-        return str;
+        final double cruisingTime = cruisingDist / cruisingSpeed;
+        final double totalTime = timeToAchieveCV + cruisingTime + timeToLand;
 
+        return timeToAchieveCV + ","
+                + distanceToAchieveCV + ","
+                + cruisingTime + ","
+                + distToLand + ","
+                + timeToLand + ","
+                + totalTime + ","
+                + (optimalTime - 36500);
     }
 
     private int findOptimalTransferWindowAdvanced(String start, String end) {
-        Planet startPlanet = this.getPlanetByName(start);
-        Planet endPlanet = this.getPlanetByName(end);
-        List<Planet> planets = repository.getAll();
+        final Planet startPlanet = this.getPlanetByName(start);
+        final Planet endPlanet = this.getPlanetByName(end);
+        final List<Planet> planets = repository.getAll();
 
-        // transfer m/s in UA/zi
-        double rocketSpeed = this.rocketAcc.evaluate()*86400/149597870.7;
+        // transfer m/s in UA/day
+        final double rocketSpeed = this.rocketAcc.evaluate() * 86400 / 149597870.7;
 
-
-        double minMetric = Double.MAX_VALUE; // Metoda noastră de optimizare: minimizarea distanței (traseul)
+        double minMetric = Double.MAX_VALUE;
         int optimalDeparture = 0;
 
-        // Căutăm în intervalul de candidate, de exemplu 10 ani (3650 zile)
         for (int departure = 0; departure <= 3650; departure++) {
-            // Calculăm poziția planetei de plecare la momentul lansării (în grade)
-            double startPeriod = startPlanet.getPeriod().evaluate(); // perioadă în zile
-            double startAngleDeg = ((360.0 / startPeriod) * departure) % 360.0;
-            double startAngleRad = Math.toRadians(startAngleDeg);
-            double startOrbitRadius = startPlanet.getOrbitalRadius().evaluate(); // în UA
+            final double startPeriod = startPlanet.getPeriod().evaluate();
+            final double startAngleDeg = ((360.0 / startPeriod) * departure) % 360.0;
+            final double startAngleRad = Math.toRadians(startAngleDeg);
+            final double startOrbitRadius = startPlanet.getOrbitalRadius().evaluate();
 
-            // Aproximare inițială pentru timpul de transfer: diferența absolută între orbite, împărțită la viteza rachetei
-            double T_transfer = Math.abs(endPlanet.getOrbitalRadius().evaluate() - startOrbitRadius) / rocketSpeed;
+            // Initial approximation for transfer time
+            double transferTime = Math.abs(endPlanet.getOrbitalRadius().evaluate() - startOrbitRadius) / rocketSpeed;
 
-            // Iterăm de câteva ori pentru a rafina T_transfer pe baza distanței efective (chordul)
+            // Refine transfer time based on effective chord distance
             for (int iter = 0; iter < 3; iter++) {
-                double arrivalTime = departure + T_transfer;
-                double endPeriod = endPlanet.getPeriod().evaluate();
-                double endAngleDeg = ((360.0 / endPeriod) * arrivalTime) % 360.0;
-                double endAngleRad = Math.toRadians(endAngleDeg);
-                double endOrbitRadius = endPlanet.getOrbitalRadius().evaluate();
+                final double arrivalTime = departure + transferTime;
 
-                // Coordonatele planetei de plecare și de sosire (în UA)
-                double startX = startOrbitRadius * Math.cos(startAngleRad);
-                double startY = startOrbitRadius * Math.sin(startAngleRad);
-                double endX = endOrbitRadius * Math.cos(endAngleRad);
-                double endY = endOrbitRadius * Math.sin(endAngleRad);
+                final double endPeriod = endPlanet.getPeriod().evaluate();
+                final double endAngleDeg = ((360.0 / endPeriod) * arrivalTime) % 360.0;
+                final double endAngleRad = Math.toRadians(endAngleDeg);
+                final double endOrbitRadius = endPlanet.getOrbitalRadius().evaluate();
 
-                // Calculăm distanța (cât de scurtă este traiectoria transferului)
-                double chordDistance = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
-                // Reevaluăm timpul de transfer în funcție de distanța calculată și viteza rachetei
-                T_transfer = chordDistance / rocketSpeed;
+                final double startX = startOrbitRadius * Math.cos(startAngleRad);
+                final double startY = startOrbitRadius * Math.sin(startAngleRad);
+                final double endX = endOrbitRadius * Math.cos(endAngleRad);
+                final double endY = endOrbitRadius * Math.sin(endAngleRad);
+
+                final double chordDistance = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+                transferTime = chordDistance / rocketSpeed;
             }
 
-            // Se calculează pozițiile finale folosind T_transfer rafinat
-            double arrivalTime = departure + T_transfer;
-            double endPeriod = endPlanet.getPeriod().evaluate();
-            double endAngleDeg = ((360.0 / endPeriod) * arrivalTime) % 360.0;
-            double endAngleRad = Math.toRadians(endAngleDeg);
-            double endOrbitRadius = endPlanet.getOrbitalRadius().evaluate();
+            final double arrivalTime = departure + transferTime;
 
-            // Coordonatele finale pentru plecare și sosire (în UA)
-            double startX = startOrbitRadius * Math.cos(startAngleRad);
-            double startY = startOrbitRadius * Math.sin(startAngleRad);
-            double endX = endOrbitRadius * Math.cos(endAngleRad);
-            double endY = endOrbitRadius * Math.sin(endAngleRad);
+            final double endPeriod = endPlanet.getPeriod().evaluate();
+            final double endAngleDeg = ((360.0 / endPeriod) * arrivalTime) % 360.0;
+            final double endAngleRad = Math.toRadians(endAngleDeg);
+            final double endOrbitRadius = endPlanet.getOrbitalRadius().evaluate();
 
-            // Distanța totală parcursă de rachetă (măsurată ca și chord distance)
-            double chordDistance = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+            final double startX = startOrbitRadius * Math.cos(startAngleRad);
+            final double startY = startOrbitRadius * Math.sin(startAngleRad);
+            final double endX = endOrbitRadius * Math.cos(endAngleRad);
+            final double endY = endOrbitRadius * Math.sin(endAngleRad);
 
-            // Verificăm dacă traiectoria este collision-free, folosind interpolarea liniară
+            final double chordDistance = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+
             boolean collisionFree = true;
-            int steps = 100; // numărul de puncte de verificare pe traiectorie
+            final int steps = 100;
 
             for (int step = 0; step <= steps; step++) {
-                double fraction = (double) step / steps;
-                // Interpolare liniară: poziția curentă a rachetei
-                double rocketX = startX + fraction * (endX - startX);
-                double rocketY = startY + fraction * (endY - startY);
-                // Timpul asociat punctului curent (lin între lansare și sosire)
-                double currentTime = departure + fraction * T_transfer;
+                final double fraction = (double) step / steps;
 
-                // Verificăm fiecare planetă (excepția celor de plecare și sosire)
+                // Linear interpolation for rocket position
+                final double rocketX = startX + fraction * (endX - startX);
+                final double rocketY = startY + fraction * (endY - startY);
+                final double currentTime = departure + fraction * transferTime;
+
                 for (Planet planet : planets) {
                     if (planet.getName().equals(startPlanet.getName()) || planet.getName().equals(endPlanet.getName())) {
                         continue;
                     }
-                    double planetPeriod = planet.getPeriod().evaluate();
-                    double planetAngleDeg = ((360.0 / planetPeriod) * currentTime) % 360.0;
-                    double planetAngleRad = Math.toRadians(planetAngleDeg);
-                    double planetOrbitRadius = planet.getOrbitalRadius().evaluate();
-                    double planetX = planetOrbitRadius * Math.cos(planetAngleRad);
-                    double planetY = planetOrbitRadius * Math.sin(planetAngleRad);
 
-                    double distance = Math.sqrt(Math.pow(rocketX - planetX, 2) + Math.pow(rocketY - planetY, 2));
-                    // Pentru verificare, se compară cu raza planetei.
-                    // Notă: se presupune că getDiameter().evaluate() returnează diametrul în UA sau se face conversia necesară.
-                    double planetRadius = planet.getDiameter().evaluate() / 2.0;
+                    final double planetPeriod = planet.getPeriod().evaluate();
+                    final double planetAngleDeg = ((360.0 / planetPeriod) * currentTime) % 360.0;
+                    final double planetAngleRad = Math.toRadians(planetAngleDeg);
+                    final double planetOrbitRadius = planet.getOrbitalRadius().evaluate();
+
+                    final double planetX = planetOrbitRadius * Math.cos(planetAngleRad);
+                    final double planetY = planetOrbitRadius * Math.sin(planetAngleRad);
+
+                    final double distance = Math.sqrt(Math.pow(rocketX - planetX, 2) + Math.pow(rocketY - planetY, 2));
+                    final double planetRadius = planet.getDiameter().evaluate() / 2.0;
 
                     if (distance * 149597870.7 * 1000 < planetRadius) {
                         collisionFree = false;
                         break;
                     }
                 }
-                if (!collisionFree) break;
+
+                if (!collisionFree) {
+                    break;
+                }
             }
 
-            // Dacă traiectoria este sigură, folosim distanța chord ca metric de optimizare
             if (collisionFree && chordDistance < minMetric) {
                 minMetric = chordDistance;
                 optimalDeparture = departure;
             }
         }
+
         return optimalDeparture;
     }
 
 
-
     @Override
     public String computeJourneyStage6(String start, String end) {
-        int optimalTime = findOptimalTransferWindowAdvanced(start,end);
+        final int optimalTime = findOptimalTransferWindowAdvanced(start, end);
 
-        Planet startPlanet = this.getPlanetByName(start);
-        Planet endPlanet = this.getPlanetByName(end);
+        final Planet startPlanet = this.getPlanetByName(start);
+        final Planet endPlanet = this.getPlanetByName(end);
 
-        //distance between the two planets after optimalTime days
-        double AU = 149597870.7;
-        double startPos = ((360 / startPlanet.getPeriod().evaluate())*optimalTime)%360;
-        double endPos = ((360 / endPlanet.getPeriod().evaluate())*optimalTime)%360;
+        final double AU = 149597870.7;
 
-        //convert to radians
-        double startRad = Math.toRadians(startPos);
-        double endRad = Math.toRadians(endPos);
+        // Distance between the two planets after optimalTime days
+        final double startPos = ((360 / startPlanet.getPeriod().evaluate()) * optimalTime) % 360;
+        final double endPos = ((360 / endPlanet.getPeriod().evaluate()) * optimalTime) % 360;
 
-        //convert to a Cartesian system
-        double startX = startPlanet.getOrbitalRadius().evaluate() * Math.cos(startRad);
-        double startY = startPlanet.getOrbitalRadius().evaluate() * Math.sin(startRad);
+        // Convert to radians
+        final double startRad = Math.toRadians(startPos);
+        final double endRad = Math.toRadians(endPos);
 
-        double endX = endPlanet.getOrbitalRadius().evaluate() * Math.cos(endRad);
-        double endY = endPlanet.getOrbitalRadius().evaluate() * Math.sin(endRad);
+        // Convert to Cartesian coordinates
+        final double startX = startPlanet.getOrbitalRadius().evaluate() * Math.cos(startRad);
+        final double startY = startPlanet.getOrbitalRadius().evaluate() * Math.sin(startRad);
 
-        //compute the distance between the two planets
-        double distance = Math.sqrt(Math.pow(startX-endX,2)+Math.pow(startY-endY,2))*1000*AU;
-        double cruisingSpeed = Math.max(startPlanet.getEscapeV().evaluate(), endPlanet.getEscapeV().evaluate());
+        final double endX = endPlanet.getOrbitalRadius().evaluate() * Math.cos(endRad);
+        final double endY = endPlanet.getOrbitalRadius().evaluate() * Math.sin(endRad);
 
-        //la plecare
-        double timeFromEVtoCV = (cruisingSpeed-startPlanet.getEscapeV().evaluate())/this.rocketAcc.evaluate();
-        double timeToAchieveCV = startPlanet.getTimeToGo().evaluate() + timeFromEVtoCV;
+        // Compute the distance between the two planets
+        final double distance = Math.sqrt(Math.pow(startX - endX, 2) + Math.pow(startY - endY, 2)) * 1000 * AU;
 
-        double distanceFromEVtoCV = (startPlanet.getEscapeV().evaluate()*timeFromEVtoCV + (this.rocketAcc.evaluate()*timeFromEVtoCV*timeFromEVtoCV)/2);
-        double distanceToAchieveCV = startPlanet.getDistanceToGo().evaluate() + distanceFromEVtoCV;
+        final double startEscapeVelocity = startPlanet.getEscapeV().evaluate();
+        final double endEscapeVelocity = endPlanet.getEscapeV().evaluate();
+        final double rocketAcceleration = this.rocketAcc.evaluate();
 
-        //la sosire
-        double timeFromCVtoEV = (cruisingSpeed-endPlanet.getEscapeV().evaluate())/this.rocketAcc.evaluate();
-        double distanceFromCVtoEV = Math.abs(cruisingSpeed*cruisingSpeed-endPlanet.getEscapeV().multiply(endPlanet.getEscapeV()).evaluate())
-                / (2*this.rocketAcc.evaluate());
+        final double cruisingSpeed = Math.max(startEscapeVelocity, endEscapeVelocity);
 
-        double timeToLand = endPlanet.getTimeToGo().evaluate() + timeFromCVtoEV;
-        double distToLand = endPlanet.getDistanceToGo().evaluate() + distanceFromCVtoEV;
+        // Departure phase
+        final double timeFromEVtoCV = (cruisingSpeed - startEscapeVelocity) / rocketAcceleration;
+        final double timeToAchieveCV = startPlanet.getTimeToGo().evaluate() + timeFromEVtoCV;
 
-        //
-        double cruisingDist = distance-startPlanet.getDiameter().evaluate()/2-endPlanet.getDiameter().evaluate()/2-
-                distToLand - distanceToAchieveCV;
-        double cruisingTime = cruisingDist/cruisingSpeed;
+        final double distanceFromEVtoCV =
+                startEscapeVelocity * timeFromEVtoCV
+                        + (rocketAcceleration * timeFromEVtoCV * timeFromEVtoCV) / 2;
+        final double distanceToAchieveCV = startPlanet.getDistanceToGo().evaluate() + distanceFromEVtoCV;
 
-        double totaltime = timeToAchieveCV + cruisingTime + timeToLand;
+        // Arrival phase
+        final double timeFromCVtoEV = (cruisingSpeed - endEscapeVelocity) / rocketAcceleration;
+        final double distanceFromCVtoEV =
+                Math.abs(cruisingSpeed * cruisingSpeed - endPlanet.getEscapeV().multiply(endPlanet.getEscapeV()).evaluate())
+                        / (2 * rocketAcceleration);
 
-        String str="";
+        final double timeToLand = endPlanet.getTimeToGo().evaluate() + timeFromCVtoEV;
+        final double distToLand = endPlanet.getDistanceToGo().evaluate() + distanceFromCVtoEV;
 
-        str+= timeToAchieveCV + "," + distanceToAchieveCV+","+cruisingTime+","+distToLand+","+timeToLand+","+totaltime +","+ (optimalTime);
+        // Cruising phase
+        final double cruisingDist =
+                distance
+                        - startPlanet.getDiameter().evaluate() / 2
+                        - endPlanet.getDiameter().evaluate() / 2
+                        - distToLand
+                        - distanceToAchieveCV;
 
-        return str;
+        final double cruisingTime = cruisingDist / cruisingSpeed;
+        final double totalTime = timeToAchieveCV + cruisingTime + timeToLand;
+
+        return timeToAchieveCV + ","
+                + distanceToAchieveCV + ","
+                + cruisingTime + ","
+                + distToLand + ","
+                + timeToLand + ","
+                + totalTime + ","
+                + optimalTime;
     }
 
     private void addRocketProps(String path) throws Exception {

@@ -136,6 +136,7 @@ public class ConsoleUserInterface {
                     service.validatePlanetName(planet2);
                 } catch (Exception e) {
                     System.err.println("Invalid destination planet name!");
+                    continue;
                 }
 
                 String result = service.computeJourneyStage3(planet1, planet2);
@@ -354,6 +355,7 @@ public class ConsoleUserInterface {
                     service.validatePlanetName(planet2);
                 } catch (Exception e) {
                     System.err.println("Invalid destination planet name!");
+                    continue;
                 }
 
                 String result;
