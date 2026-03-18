@@ -82,39 +82,54 @@ public class MyService implements IService {
 
     @Override
     public String computeJourneyStage3(String start, String end) {
-        Planet startPlanet = repository.getOneByName(start);
-        Planet endPlanet = repository.getOneByName(end);
+        final Planet startPlanet = repository.getOneByName(start);
+        final Planet endPlanet = repository.getOneByName(end);
 
-        double cruisingSpeed = Math.max(startPlanet.getEscapeV().evaluate(), endPlanet.getEscapeV().evaluate());
-        double AU = 149597870.7;
-        double distance = (Math.abs(startPlanet.getOrbitalRadius().evaluate() - endPlanet.getOrbitalRadius().evaluate())) * 1000 * AU;
+        final double startEscapeVelocity = startPlanet.getEscapeV().evaluate();
+        final double endEscapeVelocity = endPlanet.getEscapeV().evaluate();
+        final double rocketAcceleration = this.rocketAcc.evaluate();
 
-        //la plecare
-        double timeFromEVtoCV = (cruisingSpeed-startPlanet.getEscapeV().evaluate())/this.rocketAcc.evaluate();
-        double timeToAchieveCV = startPlanet.getTimeToGo().evaluate() + timeFromEVtoCV;
+        final double cruisingSpeed = Math.max(startEscapeVelocity, endEscapeVelocity);
 
-        double distanceFromEVtoCV = (startPlanet.getEscapeV().evaluate()*timeFromEVtoCV + (this.rocketAcc.evaluate()*timeFromEVtoCV*timeFromEVtoCV)/2);
-        double distanceToAchieveCV = startPlanet.getDistanceToGo().evaluate() + distanceFromEVtoCV;
+        final double AU = 149597870.7;
+        final double distance =
+                Math.abs(startPlanet.getOrbitalRadius().evaluate() - endPlanet.getOrbitalRadius().evaluate()) * 1000 * AU;
 
-        //la sosire
-        double timeFromCVtoEV = (cruisingSpeed-endPlanet.getEscapeV().evaluate())/this.rocketAcc.evaluate();
-        double distanceFromCVtoEV = Math.abs(cruisingSpeed*cruisingSpeed-endPlanet.getEscapeV().multiply(endPlanet.getEscapeV()).evaluate())
-                / (2*this.rocketAcc.evaluate());
+        // Departure phase
+        final double timeFromEVtoCV = (cruisingSpeed - startEscapeVelocity) / rocketAcceleration;
+        final double timeToAchieveCV = startPlanet.getTimeToGo().evaluate() + timeFromEVtoCV;
 
-        double timeToLand = endPlanet.getTimeToGo().evaluate() + timeFromCVtoEV;
-        double distToLand = endPlanet.getDistanceToGo().evaluate() + distanceFromCVtoEV;
+        final double distanceFromEVtoCV =
+                startEscapeVelocity * timeFromEVtoCV
+                        + (rocketAcceleration * timeFromEVtoCV * timeFromEVtoCV) / 2;
+        final double distanceToAchieveCV = startPlanet.getDistanceToGo().evaluate() + distanceFromEVtoCV;
 
-        //la mijloc
-        double cruisingDist = distance-startPlanet.getDiameter().evaluate()/2-endPlanet.getDiameter().evaluate()/2-
-                distToLand - distanceToAchieveCV;
-        double cruisingTime = cruisingDist/cruisingSpeed;
+        // Arrival phase
+        final double timeFromCVtoEV = (cruisingSpeed - endEscapeVelocity) / rocketAcceleration;
+        final double distanceFromCVtoEV =
+                Math.abs(cruisingSpeed * cruisingSpeed - endPlanet.getEscapeV().multiply(endPlanet.getEscapeV()).evaluate())
+                        / (2 * rocketAcceleration);
 
-        double totaltime = timeToAchieveCV + cruisingTime + timeToLand;
+        final double timeToLand = endPlanet.getTimeToGo().evaluate() + timeFromCVtoEV;
+        final double distToLand = endPlanet.getDistanceToGo().evaluate() + distanceFromCVtoEV;
 
-        String str="";
-        str+= timeToAchieveCV + "," + distanceToAchieveCV+","+cruisingTime+","+distToLand+","+timeToLand+","+totaltime;
+        // Cruising phase
+        final double cruisingDist =
+                distance
+                        - startPlanet.getDiameter().evaluate() / 2
+                        - endPlanet.getDiameter().evaluate() / 2
+                        - distToLand
+                        - distanceToAchieveCV;
 
-        return str;
+        final double cruisingTime = cruisingDist / cruisingSpeed;
+        final double totalTime = timeToAchieveCV + cruisingTime + timeToLand;
+
+        return timeToAchieveCV + ","
+                + distanceToAchieveCV + ","
+                + cruisingTime + ","
+                + distToLand + ","
+                + timeToLand + ","
+                + totalTime;
     }
 
     @Override

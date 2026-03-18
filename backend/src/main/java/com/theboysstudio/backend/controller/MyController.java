@@ -6,6 +6,7 @@ import com.theboysstudio.backend.dto.PlanetDto;
 import com.theboysstudio.backend.dto.PlanetMapper;
 import com.theboysstudio.backend.service.IService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -25,24 +26,24 @@ public class MyController {
         try {
             service.validateFile(request.getPath1());
         } catch (Exception e) {
-            return null;
+            return ResponseEntity.badRequest().build();
         }
 
         try {
             service.validateFile(request.getPath2());
         } catch (Exception e) {
-            return null;
+            return ResponseEntity.badRequest().build();
         }
 
         try {
             service.validateFile(request.getPath3());
         } catch (Exception e) {
-            return null;
+            return ResponseEntity.badRequest().build();
         }
         try {
             service.initialize(request.getPath1(), request.getPath2(), request.getPath3());
         } catch (Exception e) {
-            return null;
+            return ResponseEntity.internalServerError().build();
         }
 
         List<PlanetDto> planets = service.getAllPlanets().stream().map(PlanetMapper::toDto).toList();

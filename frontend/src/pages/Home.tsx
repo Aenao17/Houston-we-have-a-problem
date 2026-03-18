@@ -18,16 +18,52 @@ import {
     IonToolbar
 } from '@ionic/react';
 import { settingsOutline, rocketOutline, calculatorOutline } from 'ionicons/icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import PathsSettingsModal from '../components/PathsSettingsModal';
 import SolarSystem from '../components/SolarSystem';
 import { PlanetDto } from '../types/planet';
+import { MissionData } from '../types/mission';
 import './Home.css';
 
 const STORAGE_KEYS = {
     path1: 'houston_path1',
     path2: 'houston_path2',
     path3: 'houston_path3'
+};
+
+const parseMissionSummary = (summary: string): MissionData | null => {
+    try {
+        const transferMatch = summary.match(/Optimal transfer window in ([\d.]+) days/i);
+        const accelMatch = summary.match(/cruising velocity in ([\d.]+) s/i);
+        const cruiseMatch = summary.match(/nominal speed for .*? or ([\d.]+) s/i);
+        const decelMatch = summary.match(/decelerate to zero in ([\d.]+) s/i);
+        const totalMatch = summary.match(/Total trip time: .*? or ([\d.]+) s/i);
+
+        const angleRegex = /([A-Za-z]+) will be at: ([\d.]+) degrees/gi;
+        const planetAngles: Record<string, number> = {};
+
+        let angleMatch: RegExpExecArray | null;
+        while ((angleMatch = angleRegex.exec(summary)) !== null) {
+            const planetName = angleMatch[1];
+            const angle = Number(angleMatch[2]);
+            planetAngles[planetName] = angle;
+        }
+
+        if (!transferMatch || !accelMatch || !cruiseMatch || !decelMatch || !totalMatch) {
+            return null;
+        }
+
+        return {
+            transferWindowDays: Number(transferMatch[1]),
+            accelerateSeconds: Number(accelMatch[1]),
+            cruiseSeconds: Number(cruiseMatch[1]),
+            decelerateSeconds: Number(decelMatch[1]),
+            totalTripSeconds: Number(totalMatch[1]),
+            planetAngles
+        };
+    } catch {
+        return null;
+    }
 };
 
 const Home: React.FC = () => {
@@ -45,11 +81,16 @@ const Home: React.FC = () => {
     const [missionStarted, setMissionStarted] = useState(false);
     const [missionCompleted, setMissionCompleted] = useState(false);
     const [missionSummary, setMissionSummary] = useState('');
+    const [missionData, setMissionData] = useState<MissionData | null>(null);
     const [isComputingMission, setIsComputingMission] = useState(false);
 
     const [showMissingPathsAlert, setShowMissingPathsAlert] = useState(false);
     const [showBackendErrorAlert, setShowBackendErrorAlert] = useState(false);
     const [backendErrorMessage, setBackendErrorMessage] = useState('');
+
+    const contentRef = useRef<HTMLIonContentElement | null>(null);
+
+    const [missionRunId, setMissionRunId] = useState(0);
 
     useEffect(() => {
         setPath1(localStorage.getItem(STORAGE_KEYS.path1) || '');
@@ -67,6 +108,14 @@ const Home: React.FC = () => {
         setPath3(paths.path3);
     };
 
+    const resetMissionState = () => {
+        setMissionSummary('');
+        setMissionData(null);
+        setMissionStarted(false);
+        setMissionCompleted(false);
+        setMissionRunId((prev) => prev + 1);
+    };
+
     const handleStartJourney = async () => {
         if (!path1.trim() || !path2.trim() || !path3.trim()) {
             setShowMissingPathsAlert(true);
@@ -78,9 +127,7 @@ const Home: React.FC = () => {
             setPlanets([]);
             setStartPlanet('');
             setDestinationPlanet('');
-            setMissionSummary('');
-            setMissionStarted(false);
-            setMissionCompleted(false);
+            resetMissionState();
 
             const response = await fetch('http://localhost:8080/api/planets/load', {
                 method: 'POST',
@@ -96,7 +143,22 @@ const Home: React.FC = () => {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(errorText || 'Backend returned an error.');
+
+                if (response.status === 400) {
+                    throw new Error(
+                        errorText ||
+                        'One or more file paths are invalid. Please check that all files exist and try again.'
+                    );
+                }
+
+                if (response.status === 500) {
+                    throw new Error(
+                        errorText ||
+                        'One or more files have an invalid format. Please verify the file contents and try again.'
+                    );
+                }
+
+                throw new Error(errorText || 'Backend returned an unexpected error.');
             }
 
             const data: PlanetDto[] = await response.json();
@@ -126,9 +188,7 @@ const Home: React.FC = () => {
         setPlanets([]);
         setStartPlanet('');
         setDestinationPlanet('');
-        setMissionSummary('');
-        setMissionStarted(false);
-        setMissionCompleted(false);
+        resetMissionState();
     };
 
     const handleComputeMission = async () => {
@@ -146,9 +206,7 @@ const Home: React.FC = () => {
 
         try {
             setIsComputingMission(true);
-            setMissionSummary('');
-            setMissionStarted(false);
-            setMissionCompleted(false);
+            resetMissionState();
 
             const response = await fetch('http://localhost:8080/api/mission/compute', {
                 method: 'POST',
@@ -167,7 +225,14 @@ const Home: React.FC = () => {
             }
 
             const summary = await response.text();
+            const parsedMissionData = parseMissionSummary(summary);
+
+            if (!parsedMissionData) {
+                throw new Error('Mission summary could not be parsed.');
+            }
+
             setMissionSummary(summary);
+            setMissionData(parsedMissionData);
         } catch (error) {
             const message =
                 error instanceof Error ? error.message : 'Could not compute mission.';
@@ -179,20 +244,22 @@ const Home: React.FC = () => {
         }
     };
 
-    const handleStartMission = () => {
-        if (!missionSummary) {
+    const handleStartMission = async () => {
+        if (!missionSummary || !missionData) {
             setBackendErrorMessage('Please compute the mission first.');
             setShowBackendErrorAlert(true);
             return;
         }
 
         setMissionCompleted(false);
-        setMissionStarted(true);
+        setMissionStarted(false);
+        setMissionRunId((prev) => prev + 1);
 
-        window.scrollTo({
-            top: 0,
-            behavior: 'smooth'
+        requestAnimationFrame(() => {
+            setMissionStarted(true);
         });
+
+        await contentRef.current?.scrollToTop(500);
     };
 
     return (
@@ -213,7 +280,7 @@ const Home: React.FC = () => {
                 </IonToolbar>
             </IonHeader>
 
-            <IonContent fullscreen className="space-content">
+            <IonContent ref={contentRef} fullscreen className="space-content">
                 <div className="stars"></div>
                 <div className="stars stars-2"></div>
                 <div className="glow-orb glow-orb-1"></div>
@@ -229,17 +296,31 @@ const Home: React.FC = () => {
 
                                 <IonText className="mission-subtext">
                                     <p>
-                                        Configure the required input files from settings, then start the journey.
+                                        Configure the required input files from settings, then start the
+                                        journey.
                                     </p>
                                 </IonText>
 
                                 <div className="config-box">
-                                    <p><span>Planet file</span>{path1 || 'Not set'}</p>
-                                    <p><span>Rocket file</span>{path2 || 'Not set'}</p>
-                                    <p><span>Solar system file</span>{path3 || 'Not set'}</p>
+                                    <p>
+                                        <span>Planet file</span>
+                                        {path1 || 'Not set'}
+                                    </p>
+                                    <p>
+                                        <span>Rocket file</span>
+                                        {path2 || 'Not set'}
+                                    </p>
+                                    <p>
+                                        <span>Solar system file</span>
+                                        {path3 || 'Not set'}
+                                    </p>
                                 </div>
 
-                                <IonButton expand="block" className="launch-button" onClick={handleStartJourney}>
+                                <IonButton
+                                    expand="block"
+                                    className="launch-button"
+                                    onClick={handleStartJourney}
+                                >
                                     Start the journey!
                                 </IonButton>
                             </IonCardContent>
@@ -248,16 +329,22 @@ const Home: React.FC = () => {
                 ) : (
                     <div className="solar-system-page">
                         <div className="solar-system-topbar">
-                            <IonButton className="back-button" fill="outline" onClick={handleBackToMissionControl}>
+                            <IonButton
+                                className="back-button"
+                                fill="outline"
+                                onClick={handleBackToMissionControl}
+                            >
                                 Back to Mission Control
                             </IonButton>
                         </div>
 
                         <SolarSystem
+                            key={`${startPlanet}-${destinationPlanet}-${missionRunId}`}
                             planets={planets}
                             missionStarted={missionStarted}
                             startPlanet={startPlanet}
                             destinationPlanet={destinationPlanet}
+                            missionData={missionData}
                             onMissionComplete={() => {
                                 setMissionStarted(false);
                                 setMissionCompleted(true);
@@ -276,13 +363,14 @@ const Home: React.FC = () => {
                                         interface="popover"
                                         onIonChange={(e) => {
                                             setStartPlanet(e.detail.value);
-                                            setMissionSummary('');
-                                            setMissionStarted(false);
-                                            setMissionCompleted(false);
+                                            resetMissionState();
                                         }}
                                     >
                                         {planets.map((planet) => (
-                                            <IonSelectOption key={`start-${planet.name}`} value={planet.name}>
+                                            <IonSelectOption
+                                                key={`start-${planet.name}`}
+                                                value={planet.name}
+                                            >
                                                 {planet.name}
                                             </IonSelectOption>
                                         ))}
@@ -297,13 +385,14 @@ const Home: React.FC = () => {
                                         interface="popover"
                                         onIonChange={(e) => {
                                             setDestinationPlanet(e.detail.value);
-                                            setMissionSummary('');
-                                            setMissionStarted(false);
-                                            setMissionCompleted(false);
+                                            resetMissionState();
                                         }}
                                     >
                                         {planets.map((planet) => (
-                                            <IonSelectOption key={`destination-${planet.name}`} value={planet.name}>
+                                            <IonSelectOption
+                                                key={`destination-${planet.name}`}
+                                                value={planet.name}
+                                            >
                                                 {planet.name}
                                             </IonSelectOption>
                                         ))}
@@ -331,12 +420,13 @@ const Home: React.FC = () => {
                                     <div className="mission-summary-box">
                                         <h3 className="mission-summary-title">Mission completed</h3>
                                         <p className="mission-summary-text">
-                                            The rocket has reached {destinationPlanet}. You can now compute a new mission.
+                                            The rocket has reached {destinationPlanet}. You can now
+                                            compute a new mission or start the same one again.
                                         </p>
                                     </div>
                                 )}
 
-                                {missionSummary && (
+                                {missionSummary && missionData && (
                                     <IonButton
                                         expand="block"
                                         className="mission-start-button"
@@ -374,7 +464,7 @@ const Home: React.FC = () => {
                 <IonAlert
                     isOpen={showBackendErrorAlert}
                     onDidDismiss={() => setShowBackendErrorAlert(false)}
-                    header="Mission warning"
+                    header="Loading error"
                     message={backendErrorMessage}
                     buttons={['OK']}
                 />

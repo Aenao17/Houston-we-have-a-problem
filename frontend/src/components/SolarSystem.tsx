@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { PlanetDto } from '../types/planet';
+import { MissionData } from '../types/mission';
 import './SolarSystem.css';
 
 type SolarSystemProps = {
@@ -7,6 +8,7 @@ type SolarSystemProps = {
     missionStarted?: boolean;
     startPlanet?: string;
     destinationPlanet?: string;
+    missionData?: MissionData | null;
     onMissionComplete?: () => void;
 };
 
@@ -19,311 +21,436 @@ type PlanetRenderData = {
     planet: PlanetDto;
     orbitSize: number;
     planetSize: number;
-    period: number;
+    angleDeg: number;
+    x: number;
+    y: number;
 };
 
-type PlanetState = {
-    angle: number;
-    position: Point;
-};
+type MissionPhase =
+    | 'idle'
+    | 'fast-forward'
+    | 'rocket-ready'
+    | 'rocket-flight'
+    | 'completed';
 
-type MissionPhase = 'idle' | 'intro' | 'ready' | 'flight' | 'landed';
+const SYSTEM_SIZE = 720;
+const CENTER = SYSTEM_SIZE / 2;
 
-const INITIAL_ALIGNMENT_ANGLE = 90;
+const MIN_ORBIT_SIZE = 140;
+const MAX_ORBIT_SIZE = 620;
 
-const INTRO_DURATION_MS = 4000;
-const READY_DURATION_MS = 1200;
-const ROCKET_TRAVEL_MS = 4000;
+const MIN_PLANET_SIZE = 18;
+const MAX_PLANET_SIZE = 44;
 
-const YEAR_IN_SECONDS = 365.25 * 24 * 60 * 60;
-const INTRO_SPEED_SECONDS_PER_REAL_SECOND = 0.0001 * YEAR_IN_SECONDS;
+const DAYS_IN_100_YEARS = 100 * 365.25;
+const FAST_FORWARD_DURATION_MS = 3000;
+const ROCKET_READY_DELAY_MS = 700;
+const ROCKET_FLIGHT_TOTAL_MS = 5200;
+const ROCKET_SIZE = 26;
+const POST_ALIGNMENT_VISUAL_DAYS = 40;
 
-const getPlanetColor = (name: string): string => {
-    const colors: Record<string, string> = {
-        Mercury: '#a6a6a6',
-        Venus: '#d9b36c',
-        Earth: '#4ea5ff',
-        Mars: '#d96b4a',
-        Jupiter: '#d2b48c',
-        Saturn: '#e7d28d',
-        Uranus: '#8fe0e8',
-        Neptune: '#4b70dd',
-        Pluto: '#9bc9f5'
-    };
-
-    return colors[name] || '#9fd4ff';
-};
-
-const normalizeOrbit = (value: number, min: number, max: number) => {
-    if (max === min) return 220;
-    const normalized = (value - min) / (max - min);
-    return 220 + normalized * 520;
-};
-
-const normalizeSize = (value: number, min: number, max: number) => {
-    if (max === min) return 18;
-    return 12 + ((value - min) / (max - min)) * 28;
-};
-
-const getSafePeriod = (planet: PlanetDto, index: number) => {
-    if (planet.period && planet.period > 0) return planet.period;
-    return (index + 1) * 10000000;
-};
-
-const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
-
-const getCartesianPosition = (orbitSize: number, angleDegrees: number): Point => {
-    const radius = orbitSize / 2;
-    const radians = toRadians(angleDegrees);
-
-    return {
-        x: radius * Math.cos(radians),
-        y: radius * Math.sin(radians)
-    };
-};
+const clamp = (value: number, min: number, max: number) =>
+    Math.min(Math.max(value, min), max);
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-const getLinearPoint = (p0: Point, p1: Point, t: number): Point => ({
-    x: lerp(p0.x, p1.x, t),
-    y: lerp(p0.y, p1.y, t)
-});
-
-const easeInOutCubic = (t: number) => {
-    return t < 0.5
-        ? 4 * t * t * t
-        : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const quadraticBezier = (p0: Point, p1: Point, p2: Point, t: number): Point => {
+    const oneMinusT = 1 - t;
+    return {
+        x: oneMinusT * oneMinusT * p0.x + 2 * oneMinusT * t * p1.x + t * t * p2.x,
+        y: oneMinusT * oneMinusT * p0.y + 2 * oneMinusT * t * p1.y + t * t * p2.y
+    };
 };
 
-const getMissionPhase = (missionStarted: boolean, elapsedMs: number): MissionPhase => {
-    if (!missionStarted) return 'idle';
-    if (elapsedMs < INTRO_DURATION_MS) return 'intro';
-    if (elapsedMs < INTRO_DURATION_MS + READY_DURATION_MS) return 'ready';
-    if (elapsedMs < INTRO_DURATION_MS + READY_DURATION_MS + ROCKET_TRAVEL_MS) return 'flight';
-    return 'landed';
-};
+const easeOutQuad = (t: number) => 1 - (1 - t) * (1 - t);
+const easeInQuad = (t: number) => t * t;
 
 const SolarSystem: React.FC<SolarSystemProps> = ({
                                                      planets,
                                                      missionStarted = false,
-                                                     startPlanet = '',
-                                                     destinationPlanet = '',
+                                                     startPlanet,
+                                                     destinationPlanet,
+                                                     missionData,
                                                      onMissionComplete
                                                  }) => {
-    const [elapsedMs, setElapsedMs] = useState(0);
-    const [completionSent, setCompletionSent] = useState(false);
+    const [simulationDays, setSimulationDays] = useState(0);
+    const [postAlignmentDays, setPostAlignmentDays] = useState(0);
+    const [useMissionAngles, setUseMissionAngles] = useState(false);
+    const [missionPhase, setMissionPhase] = useState<MissionPhase>('idle');
+    const [rocketVisible, setRocketVisible] = useState(false);
+    const [rocketProgress, setRocketProgress] = useState(0);
 
-    const orbitalRadii = useMemo(() => planets.map((p) => p.orbitalRadius), [planets]);
-    const diameters = useMemo(() => planets.map((p) => p.diameter), [planets]);
+    const animationFrameRef = useRef<number | null>(null);
+    const readyTimeoutRef = useRef<number | null>(null);
+    const animationStartedRef = useRef(false);
 
-    const minOrbit = orbitalRadii.length ? Math.min(...orbitalRadii) : 0;
-    const maxOrbit = orbitalRadii.length ? Math.max(...orbitalRadii) : 0;
-    const minDiameter = diameters.length ? Math.min(...diameters) : 0;
-    const maxDiameter = diameters.length ? Math.max(...diameters) : 0;
-
-    const planetVisualData: PlanetRenderData[] = useMemo(() => {
-        return planets.map((planet, index) => ({
-            planet,
-            orbitSize: normalizeOrbit(planet.orbitalRadius, minOrbit, maxOrbit),
-            planetSize: normalizeSize(planet.diameter, minDiameter, maxDiameter),
-            period: getSafePeriod(planet, index)
-        }));
-    }, [planets, minOrbit, maxOrbit, minDiameter, maxDiameter]);
-
-    const flightStartMs = INTRO_DURATION_MS + READY_DURATION_MS;
+    const totalSimulationDays = useMemo(() => {
+        return DAYS_IN_100_YEARS + (missionData?.transferWindowDays ?? 0);
+    }, [missionData]);
 
     useEffect(() => {
-        if (!missionStarted) {
-            setElapsedMs(0);
-            setCompletionSent(false);
-            return;
+        setSimulationDays(0);
+        setPostAlignmentDays(0);
+        setUseMissionAngles(false);
+        setMissionPhase('idle');
+        setRocketVisible(false);
+        setRocketProgress(0);
+        animationStartedRef.current = false;
+
+        if (animationFrameRef.current !== null) {
+            cancelAnimationFrame(animationFrameRef.current);
+            animationFrameRef.current = null;
         }
 
-        let frameId = 0;
-        const startTime = performance.now();
+        if (readyTimeoutRef.current !== null) {
+            window.clearTimeout(readyTimeoutRef.current);
+            readyTimeoutRef.current = null;
+        }
+    }, [planets, startPlanet, destinationPlanet, missionData]);
 
-        const tick = (now: number) => {
-            setElapsedMs(now - startTime);
-            frameId = requestAnimationFrame(tick);
+    const renderPlanets = useMemo<PlanetRenderData[]>(() => {
+        if (!planets.length) {
+            return [];
+        }
+
+        const minOrbitalRadius = Math.min(...planets.map((p) => p.orbitalRadius));
+        const maxOrbitalRadius = Math.max(...planets.map((p) => p.orbitalRadius));
+
+        const minDiameter = Math.min(...planets.map((p) => p.diameter));
+        const maxDiameter = Math.max(...planets.map((p) => p.diameter));
+
+        const scaleValue = (
+            value: number,
+            minValue: number,
+            maxValue: number,
+            minScale: number,
+            maxScale: number
+        ) => {
+            if (minValue === maxValue) {
+                return (minScale + maxScale) / 2;
+            }
+
+            return (
+                minScale +
+                ((value - minValue) / (maxValue - minValue)) * (maxScale - minScale)
+            );
         };
 
-        frameId = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(frameId);
-    }, [missionStarted, startPlanet, destinationPlanet]);
+        return planets.map((planet) => {
+            const orbitSize = scaleValue(
+                planet.orbitalRadius,
+                minOrbitalRadius,
+                maxOrbitalRadius,
+                MIN_ORBIT_SIZE,
+                MAX_ORBIT_SIZE
+            );
 
-    const phase = useMemo(
-        () => getMissionPhase(missionStarted, elapsedMs),
-        [missionStarted, elapsedMs]
+            const planetSize = scaleValue(
+                planet.diameter,
+                minDiameter,
+                maxDiameter,
+                MIN_PLANET_SIZE,
+                MAX_PLANET_SIZE
+            );
+
+            let angleDeg: number;
+
+            if (useMissionAngles && missionData?.planetAngles[planet.name] !== undefined) {
+                const baseAngle = missionData.planetAngles[planet.name];
+                const extraAngle = (postAlignmentDays / planet.period) * 360;
+                angleDeg = baseAngle + extraAngle;
+            } else {
+                const normalizedDays = simulationDays % planet.period;
+                angleDeg = (normalizedDays / planet.period) * 360;
+            }
+
+            const angleRad = (angleDeg * Math.PI) / 180;
+            const orbitRadius = orbitSize / 2;
+
+            const x = CENTER + orbitRadius * Math.cos(angleRad);
+            const y = CENTER + orbitRadius * Math.sin(angleRad);
+
+            return {
+                planet,
+                orbitSize,
+                planetSize,
+                angleDeg,
+                x,
+                y
+            };
+        });
+    }, [planets, simulationDays, useMissionAngles, missionData, postAlignmentDays]);
+
+    const startPlanetData = useMemo(
+        () => renderPlanets.find((item) => item.planet.name === startPlanet),
+        [renderPlanets, startPlanet]
     );
 
-    const getSimulatedSecondsAt = (timeMs: number) => {
-        if (!missionStarted) return 0;
-
-        const cappedTimeMs = Math.min(timeMs, INTRO_DURATION_MS);
-        return (cappedTimeMs / 1000) * INTRO_SPEED_SECONDS_PER_REAL_SECOND;
-    };
-
-    const introSimulatedSeconds = useMemo(
-        () => getSimulatedSecondsAt(elapsedMs),
-        [elapsedMs, missionStarted]
+    const destinationPlanetData = useMemo(
+        () => renderPlanets.find((item) => item.planet.name === destinationPlanet),
+        [renderPlanets, destinationPlanet]
     );
 
-    const frozenSimulatedSeconds = useMemo(
-        () => getSimulatedSecondsAt(INTRO_DURATION_MS),
-        [missionStarted]
-    );
+    const rocketFlightRatios = useMemo(() => {
+        const accelerate = missionData?.accelerateSeconds ?? 1;
+        const cruise = missionData?.cruiseSeconds ?? 1;
+        const decelerate = missionData?.decelerateSeconds ?? 1;
 
-    const displayedSimulatedSeconds =
-        phase === 'intro' ? introSimulatedSeconds : frozenSimulatedSeconds;
+        const total = accelerate + cruise + decelerate;
 
-    const getPlanetAngle = (period: number, simulatedSeconds: number) => {
-        const completedRotations = simulatedSeconds / period;
-        return INITIAL_ALIGNMENT_ANGLE + completedRotations * 360;
-    };
+        return {
+            accelRatio: accelerate / total,
+            cruiseRatio: cruise / total,
+            decelRatio: decelerate / total
+        };
+    }, [missionData]);
 
-    const displayedPlanetStates = useMemo(() => {
-        const result = new Map<string, PlanetState>();
+    const mappedRocketProgress = useMemo(() => {
+        const { accelRatio, cruiseRatio, decelRatio } = rocketFlightRatios;
+        const p = clamp(rocketProgress, 0, 1);
 
-        for (const entry of planetVisualData) {
-            const angle = getPlanetAngle(entry.period, displayedSimulatedSeconds);
-            const position = getCartesianPosition(entry.orbitSize, angle);
-            result.set(entry.planet.name, { angle, position });
+        if (p <= accelRatio) {
+            const localT = accelRatio === 0 ? 1 : p / accelRatio;
+            return 0.18 * easeOutQuad(localT);
         }
 
-        return result;
-    }, [planetVisualData, displayedSimulatedSeconds]);
+        if (p <= accelRatio + cruiseRatio) {
+            const localT = cruiseRatio === 0 ? 1 : (p - accelRatio) / cruiseRatio;
+            return lerp(0.18, 0.82, localT);
+        }
 
-    const startPosition = displayedPlanetStates.get(startPlanet)?.position ?? null;
-    const destinationPosition = displayedPlanetStates.get(destinationPlanet)?.position ?? null;
+        const localT =
+            decelRatio === 0 ? 1 : (p - accelRatio - cruiseRatio) / decelRatio;
+        return lerp(0.82, 1, easeInQuad(localT));
+    }, [rocketProgress, rocketFlightRatios]);
 
-    const rocketFlightPosition = useMemo(() => {
-        if (!missionStarted || !startPlanet || !destinationPlanet) return null;
-        if (!startPosition || !destinationPosition) return null;
-        if (phase !== 'flight') return null;
+    const rocketPathPoints = useMemo(() => {
+        if (!startPlanetData || !destinationPlanetData) {
+            return null;
+        }
 
-        const rawProgress = (elapsedMs - flightStartMs) / ROCKET_TRAVEL_MS;
-        const clampedProgress = Math.min(Math.max(rawProgress, 0), 1);
-        const easedProgress = easeInOutCubic(clampedProgress);
+        const startPoint: Point = {
+            x: startPlanetData.x,
+            y: startPlanetData.y
+        };
 
-        return getLinearPoint(startPosition, destinationPosition, easedProgress);
-    }, [
-        missionStarted,
-        startPlanet,
-        destinationPlanet,
-        startPosition,
-        destinationPosition,
-        phase,
-        elapsedMs,
-        flightStartMs
-    ]);
+        const endPoint: Point = {
+            x: destinationPlanetData.x,
+            y: destinationPlanetData.y
+        };
 
-    const showRocketOnStartPlanet = phase === 'ready';
-    const showRocketFlying = phase === 'flight' && !!rocketFlightPosition;
-    const showRocketOnDestinationPlanet = phase === 'landed';
+        const midX = (startPoint.x + endPoint.x) / 2;
+        const midY = (startPoint.y + endPoint.y) / 2;
+
+        const dx = endPoint.x - startPoint.x;
+        const dy = endPoint.y - startPoint.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        const normalX = distance === 0 ? 0 : -dy / distance;
+        const normalY = distance === 0 ? -1 : dx / distance;
+
+        const arcHeight = clamp(distance * 0.22, 50, 140);
+
+        const controlPoint: Point = {
+            x: midX + normalX * arcHeight,
+            y: midY + normalY * arcHeight
+        };
+
+        return {
+            startPoint,
+            controlPoint,
+            endPoint
+        };
+    }, [startPlanetData, destinationPlanetData]);
+
+    const rocketPosition = useMemo(() => {
+        if (!rocketPathPoints) {
+            return null;
+        }
+
+        return quadraticBezier(
+            rocketPathPoints.startPoint,
+            rocketPathPoints.controlPoint,
+            rocketPathPoints.endPoint,
+            mappedRocketProgress
+        );
+    }, [rocketPathPoints, mappedRocketProgress]);
+
+    const rocketAngleDeg = useMemo(() => {
+        if (!rocketPathPoints) {
+            return 0;
+        }
+
+        const currentT = mappedRocketProgress;
+        const nextT = clamp(currentT + 0.01, 0, 1);
+
+        const currentPoint = quadraticBezier(
+            rocketPathPoints.startPoint,
+            rocketPathPoints.controlPoint,
+            rocketPathPoints.endPoint,
+            currentT
+        );
+
+        const nextPoint = quadraticBezier(
+            rocketPathPoints.startPoint,
+            rocketPathPoints.controlPoint,
+            rocketPathPoints.endPoint,
+            nextT
+        );
+
+        return (
+            (Math.atan2(nextPoint.y - currentPoint.y, nextPoint.x - currentPoint.x) * 180) /
+            Math.PI
+        );
+    }, [rocketPathPoints, mappedRocketProgress]);
 
     useEffect(() => {
-        if (!missionStarted) {
-            setCompletionSent(false);
+        if (!missionStarted || planets.length === 0 || !missionData) {
             return;
         }
 
-        if (phase === 'landed' && !completionSent) {
-            setCompletionSent(true);
-            onMissionComplete?.();
+        if (animationStartedRef.current) {
+            return;
         }
-    }, [phase, completionSent, missionStarted, onMissionComplete]);
 
-    if (planets.length === 0) return null;
+        animationStartedRef.current = true;
+        setMissionPhase('fast-forward');
+        setUseMissionAngles(false);
+        setSimulationDays(0);
+        setPostAlignmentDays(0);
+        setRocketVisible(false);
+        setRocketProgress(0);
+
+        const fastForwardStartTime = performance.now();
+
+        const animateFastForward = (currentTime: number) => {
+            const elapsed = currentTime - fastForwardStartTime;
+            const progress = Math.min(elapsed / FAST_FORWARD_DURATION_MS, 1);
+
+            setSimulationDays(progress * totalSimulationDays);
+
+            if (progress < 1) {
+                animationFrameRef.current = requestAnimationFrame(animateFastForward);
+                return;
+            }
+
+            setSimulationDays(totalSimulationDays);
+            setUseMissionAngles(true);
+            setPostAlignmentDays(0);
+            setMissionPhase('rocket-ready');
+            setRocketVisible(true);
+            setRocketProgress(0);
+            animationFrameRef.current = null;
+
+            readyTimeoutRef.current = window.setTimeout(() => {
+                setMissionPhase('rocket-flight');
+
+                const rocketFlightStartTime = performance.now();
+
+                const animateRocketFlight = (rocketTime: number) => {
+                    const rocketElapsed = rocketTime - rocketFlightStartTime;
+                    const rocketLinearProgress = Math.min(
+                        rocketElapsed / ROCKET_FLIGHT_TOTAL_MS,
+                        1
+                    );
+
+                    setRocketProgress(rocketLinearProgress);
+                    setPostAlignmentDays(rocketLinearProgress * POST_ALIGNMENT_VISUAL_DAYS);
+
+                    if (rocketLinearProgress < 1) {
+                        animationFrameRef.current = requestAnimationFrame(animateRocketFlight);
+                    } else {
+                        animationFrameRef.current = null;
+                        setRocketProgress(1);
+                        setPostAlignmentDays(POST_ALIGNMENT_VISUAL_DAYS);
+                        setMissionPhase('completed');
+                        onMissionComplete?.();
+                    }
+                };
+
+                animationFrameRef.current = requestAnimationFrame(animateRocketFlight);
+            }, ROCKET_READY_DELAY_MS);
+        };
+
+        animationFrameRef.current = requestAnimationFrame(animateFastForward);
+
+        return () => {
+            if (animationFrameRef.current !== null) {
+                cancelAnimationFrame(animationFrameRef.current);
+                animationFrameRef.current = null;
+            }
+
+            if (readyTimeoutRef.current !== null) {
+                window.clearTimeout(readyTimeoutRef.current);
+                readyTimeoutRef.current = null;
+            }
+        };
+    }, [missionStarted, planets, missionData, totalSimulationDays, onMissionComplete]);
 
     return (
-        <div className="solar-system-wrapper">
-            <h2 className="solar-system-title">
-                {missionStarted ? 'Mission Simulation' : 'Solar System View'}
-            </h2>
+        <div className="solar-system-shell">
+            <div
+                className="solar-system-stage"
+                style={{ width: SYSTEM_SIZE, height: SYSTEM_SIZE }}
+            >
+                <div className="sun"></div>
 
-            <div className="solar-system">
-                <div className={`sun ${missionStarted ? 'sun-animated' : ''}`}>Sun</div>
-
-                {planetVisualData.map(({ planet, orbitSize, planetSize, period }) => {
-                    const displayedState = displayedPlanetStates.get(planet.name);
-                    const angle =
-                        displayedState?.angle ??
-                        getPlanetAngle(period, displayedSimulatedSeconds);
-
-                    const isStartPlanet = planet.name === startPlanet;
-                    const isDestinationPlanet = planet.name === destinationPlanet;
+                {renderPlanets.map((item) => {
+                    const isStart = item.planet.name === startPlanet;
+                    const isDestination = item.planet.name === destinationPlanet;
 
                     return (
-                        <div
-                            key={planet.name}
-                            className="orbit"
-                            style={{
-                                width: `${orbitSize}px`,
-                                height: `${orbitSize}px`
-                            }}
-                        >
+                        <div key={item.planet.name}>
                             <div
-                                className="planet-anchor"
+                                className="orbit-ring"
                                 style={{
-                                    transform: `rotate(${angle}deg)`
+                                    width: item.orbitSize,
+                                    height: item.orbitSize,
+                                    left: CENTER - item.orbitSize / 2,
+                                    top: CENTER - item.orbitSize / 2
                                 }}
+                            />
+
+                            <div
+                                className={[
+                                    'planet',
+                                    isStart ? 'planet-start' : '',
+                                    isDestination ? 'planet-destination' : ''
+                                ].join(' ')}
+                                style={{
+                                    width: item.planetSize,
+                                    height: item.planetSize,
+                                    left: item.x - item.planetSize / 2,
+                                    top: item.y - item.planetSize / 2
+                                }}
+                                title={`${item.planet.name} • ${item.angleDeg.toFixed(2)}°`}
                             >
-                                <div
-                                    className="planet"
-                                    style={{
-                                        width: `${planetSize}px`,
-                                        height: `${planetSize}px`,
-                                        background: getPlanetColor(planet.name)
-                                    }}
-                                    title={planet.name}
-                                >
-                                    <span className="planet-label">{planet.name}</span>
-
-                                    {showRocketOnStartPlanet && isStartPlanet && (
-                                        <span className="rocket-marker" title="Rocket ready">
-                                            🚀
-                                        </span>
-                                    )}
-
-                                    {showRocketOnDestinationPlanet && isDestinationPlanet && (
-                                        <span className="rocket-marker" title="Rocket landed">
-                                            🚀
-                                        </span>
-                                    )}
-                                </div>
+                                <span className="planet-tooltip">{item.planet.name}</span>
                             </div>
                         </div>
                     );
                 })}
 
-                {showRocketFlying && rocketFlightPosition && (
+                {rocketVisible && rocketPosition && (
                     <div
-                        className="flying-rocket"
+                        className={[
+                            'rocket',
+                            missionPhase === 'rocket-ready' ? 'rocket-ready' : '',
+                            missionPhase === 'rocket-flight' ? 'rocket-flight' : '',
+                            missionPhase === 'completed' ? 'rocket-landed' : ''
+                        ].join(' ')}
                         style={{
-                            transform: `translate(${rocketFlightPosition.x}px, ${rocketFlightPosition.y}px)`
+                            width: ROCKET_SIZE,
+                            height: ROCKET_SIZE,
+                            left: rocketPosition.x - ROCKET_SIZE / 2,
+                            top: rocketPosition.y - ROCKET_SIZE / 2,
+                            transform: `rotate(${rocketAngleDeg}deg)`
                         }}
-                        title="Rocket in flight"
+                        title="Rocket"
                     >
                         🚀
                     </div>
                 )}
-            </div>
-
-            <div className="planet-legend">
-                {planets.map((planet) => (
-                    <div key={planet.name} className="planet-legend-item">
-                        <span
-                            className="planet-legend-dot"
-                            style={{ background: getPlanetColor(planet.name) }}
-                        />
-                        <div>
-                            <strong>{planet.name}</strong>
-                            <p>Diameter: {planet.diameter}</p>
-                            <p>Orbital radius: {planet.orbitalRadius}</p>
-                            <p>Period: {planet.period}</p>
-                        </div>
-                    </div>
-                ))}
             </div>
         </div>
     );
